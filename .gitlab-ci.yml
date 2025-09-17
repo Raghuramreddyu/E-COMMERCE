@@ -1,0 +1,176 @@
+# GitLab CI/CD pipeline for 3-tier e-commerce app
+stages:
+  - lint
+  - test
+  - security
+  - build
+  - review
+  - deploy
+
+# Variables (use GitLab CI/CD Variables for secrets in Settings -> CI/CD)
+variables:
+  PROJECT_ID: "your-gcp-project-id"
+  GCR_HOSTNAME: "gcr.io"
+  IMAGE_TAG: "$CI_COMMIT_SHORT_SHA"
+  DB_HOST: "mysql_db"
+  DB_USER: "root"
+  DB_PASSWORD: "root"
+  DB_NAME: "pc_parts"
+
+# -----------------------------
+# Stage 1: Lint
+# -----------------------------
+lint_frontend:
+  stage: lint
+  image: node:18
+  script:
+    - cd frontend
+    - npm install
+    - npm run lint
+  only:
+    - merge_requests
+
+lint_backend:
+  stage: lint
+  image: node:18
+  script:
+    - cd backend
+    - npm install
+    - npm run lint
+  only:
+    - merge_requests
+
+# -----------------------------
+# Stage 2: Unit Tests
+# -----------------------------
+unit_test_frontend:
+  stage: test
+  image: node:18
+  script:
+    - cd frontend
+    - npm install
+    - npm run test -- --watch=false --browsers=ChromeHeadless
+  only:
+    - merge_requests
+
+unit_test_backend:
+  stage: test
+  image: node:18
+  script:
+    - cd backend
+    - npm install
+    - npm test
+  only:
+    - merge_requests
+
+# -----------------------------
+# Stage 3: Security Scan
+# -----------------------------
+security_scan:
+  stage: security
+  image: returntocorp/semgrep
+  script:
+    - semgrep --config=p/security-audit
+  allow_failure: false
+  only:
+    - merge_requests
+
+# -----------------------------
+# Stage 4: Build & Push Docker Images
+# -----------------------------
+docker_build_push:
+  stage: build
+  image: docker:20.10.16
+  services:
+    - docker:20.10.16-dind
+  before_script:
+    - echo $GCP_KEY | base64 -d > key.json
+    - gcloud auth activate-service-account --key-file=key.json
+    - gcloud auth configure-docker
+  script:
+    # Backend
+    - docker build -t $GCR_HOSTNAME/$PROJECT_ID/backend:$IMAGE_TAG ./backend
+    - docker push $GCR_HOSTNAME/$PROJECT_ID/backend:$IMAGE_TAG
+    # Frontend
+    - docker build -t $GCR_HOSTNAME/$PROJECT_ID/frontend:$IMAGE_TAG ./frontend
+    - docker push $GCR_HOSTNAME/$PROJECT_ID/frontend:$IMAGE_TAG
+  only:
+    - merge_requests
+
+# -----------------------------
+# Stage 5: Review App Deployment
+# -----------------------------
+review_app:
+  stage: review
+  image: bitnami/kubectl:latest
+  before_script:
+    - echo $KUBE_CONFIG > kubeconfig.yaml
+    - export KUBECONFIG=$CI_PROJECT_DIR/kubeconfig.yaml
+  script:
+    - kubectl create namespace review-$CI_COMMIT_SHORT_SHA || true
+    - kubectl apply -f k8s/review/backend.yaml -n review-$CI_COMMIT_SHORT_SHA
+    - kubectl apply -f k8s/review/frontend.yaml -n review-$CI_COMMIT_SHORT_SHA
+  environment:
+    name: review/$CI_COMMIT_REF_NAME
+    url: http://frontend.review-$CI_COMMIT_SHORT_SHA.example.com
+  only:
+    - merge_requests
+
+# -----------------------------
+# Stage 6: Selenium Tests (Parallel)
+# -----------------------------
+selenium_tests:
+  stage: review
+  image: selenium/standalone-chrome:latest
+  script:
+    - pytest tests/selenium --parallel=4 --base-url=http://frontend.review-$CI_COMMIT_SHORT_SHA.example.com
+  only:
+    - merge_requests
+  dependencies:
+    - review_app
+
+# -----------------------------
+# Stage 7: DAST Security Scan
+# -----------------------------
+dast_scan:
+  stage: review
+  image: owasp/zap2docker-stable
+  script:
+    - zap-baseline.py -t http://frontend.review-$CI_COMMIT_SHORT_SHA.example.com -r zap-report.html
+    - cat zap-report.html
+  only:
+    - merge_requests
+  allow_failure: false
+  dependencies:
+    - review_app
+
+# -----------------------------
+# Stage 8: Argo CD Sync to Stage
+# -----------------------------
+argo_cd_stage:
+  stage: deploy
+  image: argoproj/argocd:latest
+  before_script:
+    - argocd login $ARGOCD_SERVER --username $ARGOCD_USER --password $ARGOCD_PASS --insecure
+  script:
+    - argocd app sync 3tier-app-staging
+  environment:
+    name: staging
+  only:
+    - main
+
+# -----------------------------
+# Stage 9: Manual Gate → Prod Sync
+# -----------------------------
+deploy_prod:
+  stage: deploy
+  image: argoproj/argocd:latest
+  before_script:
+    - argocd login $ARGOCD_SERVER --username $ARGOCD_USER --password $ARGOCD_PASS --insecure
+  script:
+    - argocd app sync 3tier-app-prod
+  when: manual
+  environment:
+    name: production
+  only:
+    - main
