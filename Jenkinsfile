@@ -20,6 +20,8 @@ pipeline {
                             // bat 'npm run lint' // This line was causing the error. Ensure it is commented out.
                             echo '--- Running Frontend Tests ---'
                             bat 'npm test -- --no-watch --browsers=ChromeHeadless'
+                            echo '--- Running E2E Tests ---'
+                            bat 'npx cypress run --headless --browser chrome'
                             echo '--- Auditing Frontend Dependencies for Security ---'
                             // Fails the build if high or critical severity vulnerabilities are found
                             bat 'npm audit --audit-level=high'
