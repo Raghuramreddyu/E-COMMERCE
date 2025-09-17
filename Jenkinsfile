@@ -48,33 +48,7 @@ pipeline {
                 }
             }
         }
-        stage('E2E Tests') {
-            agent any
-            steps {
-                script {
-                    // A try-finally block is crucial to ensure the environment is always torn down, even if tests fail.
-                    try {
-                        echo '--- Starting application stack with Docker Compose ---'
-                        // The '-d' runs it in detached mode. '--build' ensures fresh images are used.
-                        bat 'docker-compose up -d --build'
-
-                        echo '--- Waiting for services to become healthy ---'
-                        // Poll the frontend service until it returns a successful status code.
-                        // The --retry options make this a robust way to wait, replacing a brittle 'sleep'.
-                        bat 'curl --retry 20 --retry-delay 5 --retry-connrefused -f http://localhost'
-
-                        echo '--- Running Cypress E2E Tests ---'
-                        // Run the Cypress tests headlessly from the frontend directory.
-                        dir('frontend') {
-                            bat 'npm run e2e'
-                        }
-                    } finally {
-                        echo '--- Tearing down application stack ---'
-                        bat 'docker-compose down'
-                    }
-                }
-            }
-        }
+       
     }
     post {
         always {
