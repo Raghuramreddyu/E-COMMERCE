@@ -25,9 +25,11 @@ spec:
             secretKeyRef:
               name: mysql-pass
               key: password
-        # --- ADD THIS FINAL VARIABLE FOR THE USERNAME ---
         - name: DB_USER
           value: "root"
+        # --- ADD THIS FINAL VARIABLE FOR THE DATABASE NAME ---
+        - name: DB_NAME
+          value: "pc_parts"
 ---
 apiVersion: v1
 kind: Service
