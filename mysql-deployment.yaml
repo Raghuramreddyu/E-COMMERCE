@@ -18,8 +18,13 @@ spec:
           ports:
             - containerPort: 3306
           env:
+            # --- THIS IS THE UPDATED SECTION ---
             - name: MYSQL_ROOT_PASSWORD
-              value: "root" # Change this for production
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-pass      # Name of the Secret we just created
+                  key: password        # Key inside the Secret
+            # -----------------------------------
             - name: MYSQL_DATABASE
               value: "pc_parts"
 ---

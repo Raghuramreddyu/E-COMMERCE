@@ -1,11 +1,30 @@
 pipeline {
     agent any
+
+    environment {
+        // --- AWS Configuration ---
+        // Replace with your 12-digit AWS account ID
+        AWS_ACCOUNT_ID = "YOUR_AWS_ACCOUNT_ID"
+        AWS_REGION = "us-east-1"
+        
+        // --- ECR Image Paths ---
+        // These are constructed using your AWS details
+        ECR_PATH = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+        BACKEND_IMAGE_NAME = "${ECR_PATH}/e-commerce-backend"
+        FRONTEND_IMAGE_NAME = "${ECR_PATH}/e-commerce-frontend"
+        
+        // --- Git Commit Tag ---
+        // A unique tag for the Docker images based on the Git commit
+        IMAGE_TAG = env.GIT_COMMIT.substring(0, 8)
+    }
+
     stages {
         stage('Checkout') {
             steps {
                 checkout scm
             }
         }
+
         stage('Quality Gates') {
             parallel {
                 stage('Frontend') {
@@ -14,14 +33,9 @@ pipeline {
                         dir('frontend') {
                             echo '--- Installing Frontend Dependencies ---'
                             bat 'npm install'
-                            echo '--- Linting Frontend ---'
-                            // To enable, configure a linter (e.g., ng add @angular-eslint/schematics) and uncomment the line below.
-                            // The 'lint' script is missing in frontend/package.json.
-                            // bat 'npm run lint' // This line was causing the error. Ensure it is commented out.
                             echo '--- Running Frontend Tests ---'
                             bat 'npm test -- --no-watch --browsers=ChromeHeadless'
                             echo '--- Auditing Frontend Dependencies for Security ---'
-                            // Fails the build if high or critical severity vulnerabilities are found
                             bat 'npm audit --audit-level=high'
                         }
                     }
@@ -32,22 +46,14 @@ pipeline {
                         dir('backend') {
                             echo '--- Installing Backend Dependencies ---'
                             bat 'npm install'
-                            echo '--- Linting Backend ---'
-                            echo 'Skipping backend linting. To enable, add a "lint" script to backend/package.json and uncomment the line below.'
-                            // bat 'npm run lint'
-                            
-                            echo '--- Running Backend Tests ---'
-                            echo 'Skipping backend tests. To enable, configure your tests and use the command below.'
-                            // bat 'npm test'
-
                             echo '--- Auditing Backend Dependencies for Security ---'
-                            // Fails the build if high or critical severity vulnerabilities are found
                             bat 'npm audit --audit-level=high'
                         }
                     }
                 }
             }
         }
+
         stage('Build & Push Docker Images') {
             parallel {
                 stage('Frontend Image') {
@@ -56,14 +62,12 @@ pipeline {
                         dir('frontend') {
                             script {
                                 echo '--- Building and Pushing Frontend Docker Image ---'
-                                env.GIT_COMMIT = bat(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
-                                // Use your Docker Hub username
-                                def imageName = "raghuramummadi/e-commerce-frontend:${env.GIT_COMMIT}"
-                                
-                                bat "docker build -t \"${imageName}\" -f Dockerfile ."
-                                withCredentials([usernamePassword(credentialsId: 'docker-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                                    bat "echo ${DOCKER_PASS} | docker login -u ${DOCKER_USER} --password-stdin"
-                                    bat "docker push \"${imageName}\""
+                                bat "docker build -t ${FRONTEND_IMAGE_NAME}:${IMAGE_TAG} -f Dockerfile ."
+                                // Use the AWS credentials stored in Jenkins
+                                withCredentials([aws(credentialsId: 'aws-credentials')]) {
+                                    // Log in to Amazon ECR
+                                    bat "aws ecr get-login-password --region %AWS_REGION% | docker login --username AWS --password-stdin %ECR_PATH%"
+                                    bat "docker push ${FRONTEND_IMAGE_NAME}:${IMAGE_TAG}"
                                 }
                             }
                         }
@@ -75,14 +79,12 @@ pipeline {
                         dir('backend') {
                             script {
                                 echo '--- Building and Pushing Backend Docker Image ---'
-                                env.GIT_COMMIT = bat(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
-                                // Use your Docker Hub username
-                                def imageName = "raghuramummadi/e-commerce-backend:${env.GIT_COMMIT}"
-
-                                bat "docker build -t \"${imageName}\" -f Dockerfile ."
-                                withCredentials([usernamePassword(credentialsId: 'docker-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                                    bat "echo ${DOCKER_PASS} | docker login -u ${DOCKER_USER} --password-stdin"
-                                    bat "docker push \"${imageName}\""
+                                bat "docker build -t ${BACKEND_IMAGE_NAME}:${IMAGE_TAG} -f Dockerfile ."
+                                // Use the AWS credentials stored in Jenkins
+                                withCredentials([aws(credentialsId: 'aws-credentials')]) {
+                                    // Log in to Amazon ECR
+                                    bat "aws ecr get-login-password --region %AWS_REGION% | docker login --username AWS --password-stdin %ECR_PATH%"
+                                    bat "docker push ${BACKEND_IMAGE_NAME}:${IMAGE_TAG}"
                                 }
                             }
                         }
@@ -90,35 +92,42 @@ pipeline {
                 }
             }
         }
-        stage('Deploy to Minikube') {
+
+        stage('Deploy to EKS') {
             agent any
             steps {
                 script {
-                    withEnv(['KUBECONFIG=C:\\Users\\91630\\.kube\\config']) {
-                        echo '--- Deploying Application to Minikube ---'
+                    // Use the AWS credentials stored in Jenkins
+                    withCredentials([aws(credentialsId: 'aws-credentials')]) {
+                        echo '--- Configuring kubectl for EKS ---'
+                        // Connect kubectl to your EKS cluster
+                        bat "aws eks update-kubeconfig --name e-commerce-cluster --region %AWS_REGION%"
                         
-                        // Apply the Kubernetes manifests
+                        echo '--- Deploying Application Manifests ---'
+                        // Apply the updated YAML files
                         bat 'kubectl apply -f mysql-deployment.yaml'
                         bat 'kubectl apply -f backend-deployment.yaml'
                         bat 'kubectl apply -f frontend-deployment.yaml'
-
-                        // Update the image for the deployments to the one just built
-                        bat "kubectl set image deployment/backend-deployment backend=raghuramummadi/e-commerce-backend:${env.GIT_COMMIT}"
-                        bat "kubectl set image deployment/frontend-deployment frontend=raghuramummadi/e-commerce-frontend:${env.GIT_COMMIT}"
+                        
+                        echo '--- Updating Deployments with new image version ---'
+                        // Update the running deployments with the new image tag
+                        bat "kubectl set image deployment/backend-deployment backend=${BACKEND_IMAGE_NAME}:${IMAGE_TAG}"
+                        bat "kubectl set image deployment/frontend-deployment frontend=${FRONTEND_IMAGE_NAME}:${IMAGE_TAG}"
                     }
                 }
             }
         }
     }
+
     post {
         always {
-            cleanWs() // Clean up workspace after build
+            cleanWs()
+        }
+        success {
+            echo 'Pipeline finished successfully!'
         }
         failure {
             echo 'Pipeline failed!'
-        }
-        success {
-            echo 'Pipeline succeeded!'
         }
     }
 }
