@@ -94,7 +94,7 @@ pipeline {
             agent any
             steps {
                 script {
-                    withEnv(['KUBECONFIG=C:\Users\91630\.kube\config']) {
+                    withEnv(['KUBECONFIG=C:\\Users\\91630\\.kube\\config']) {
                         echo '--- Deploying Application to Minikube ---'
                         
                         // Apply the Kubernetes manifests
