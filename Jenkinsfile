@@ -113,7 +113,7 @@ pipeline {
             // This block will run regardless of the pipeline's outcome
             echo '--- Cleaning up workspace and stopping lingering processes ---'
             // Corrected taskkill command for Windows
-            bat 'taskkill /f /im node.exe' 
+            bat 'taskkill /f /im node.exe || echo Process node.exe not found' 
             cleanWs()
         }
         success {
