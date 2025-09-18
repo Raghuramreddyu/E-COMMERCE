@@ -19,14 +19,15 @@ spec:
         - containerPort: 3000
         env:
         - name: DB_HOST
-          value: "mysql-service" # Correctly points to the MySQL service
-        # --- ADD THIS SECTION TO SECURELY PROVIDE THE DB PASSWORD ---
+          value: "mysql-service"
         - name: DB_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: mysql-pass      # Name of the Secret we created
-              key: password        # Key inside the Secret
-        # ----------------------------------------------------------------
+              name: mysql-pass
+              key: password
+        # --- ADD THIS FINAL VARIABLE FOR THE USERNAME ---
+        - name: DB_USER
+          value: "root"
 ---
 apiVersion: v1
 kind: Service
