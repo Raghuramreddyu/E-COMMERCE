@@ -113,7 +113,7 @@ pipeline {
             // This block will run regardless of the pipeline's outcome
             echo '--- Cleaning up workspace and stopping lingering processes ---'
             // Add this command to kill any node processes that may be stuck from the test runner
-            bat 'taskkill /f /im node.exe || true' 
+            bat 'taskkill /f /im node.exe' 
             cleanWs()
         }
         success {
