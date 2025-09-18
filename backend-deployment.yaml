@@ -13,22 +13,20 @@ spec:
         app: backend
     spec:
       containers:
-        - name: backend
-          image: raghuramummadi/e-commerce-backend:latest # This will be replaced by Jenkins
-          imagePullPolicy: Always # Ensures the latest image is always pulled
-          ports:
-            - containerPort: 3000
-          env:
-            - name: DB_HOST
-              value: "mysql-service" # The name of the MySQL service
-            # Add other environment variables (DB_USER, DB_PASSWORD, etc.) here
-            # For production, these should come from Kubernetes Secrets
-          livenessProbe:
-            httpGet:
-              path: /healthz
-              port: 3000
-            initialDelaySeconds: 15
-            periodSeconds: 20
+      - name: backend
+        image: saiaryansoma/e-commerce-backend:latest # Jenkins will update this
+        ports:
+        - containerPort: 3000
+        env:
+        - name: DB_HOST
+          value: "mysql-service" # Correctly points to the MySQL service
+        # --- ADD THIS SECTION TO SECURELY PROVIDE THE DB PASSWORD ---
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass      # Name of the Secret we created
+              key: password        # Key inside the Secret
+        # ----------------------------------------------------------------
 ---
 apiVersion: v1
 kind: Service
@@ -38,6 +36,6 @@ spec:
   selector:
     app: backend
   ports:
-    - protocol: TCP
-      port: 3000
-      targetPort: 3000
+  - protocol: TCP
+    port: 3000
+    targetPort: 3000
