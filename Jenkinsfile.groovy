@@ -110,10 +110,17 @@ pipeline {
 
     post {
         always {
-            echo '--- Cleaning up workspace and stopping lingering processes ---'
-            // Added '|| echo ...' to prevent failure if node.exe is not running
-            bat 'taskkill /f /im node.exe || echo Process node.exe not found'
-            cleanWs()
+            script {
+                echo '--- Cleaning up workspace and stopping lingering processes ---'
+                try {
+                    // This will attempt to kill the node process
+                    bat 'taskkill /f /im node.exe'
+                } catch (any) {
+                    // If it fails (e.g., process not found), it will print this message and continue
+                    echo 'No lingering node.exe processes to kill.'
+                }
+                cleanWs()
+            }
         }
         success {
             echo 'Pipeline finished successfully!'
