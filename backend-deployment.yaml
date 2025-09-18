@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: backend
-          image: saiaryansoma/e-commerce-backend:latest # This will be replaced by Jenkins
+          image: raghuramummadi/e-commerce-backend:latest # This will be replaced by Jenkins
           imagePullPolicy: Always # Ensures the latest image is always pulled
           ports:
             - containerPort: 3000

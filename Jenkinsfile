@@ -58,10 +58,10 @@ pipeline {
                                 echo '--- Building and Pushing Frontend Docker Image ---'
                                 env.GIT_COMMIT = bat(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
                                 // Use your Docker Hub username
-                                def imageName = "saiaryansoma/e-commerce-frontend:${env.GIT_COMMIT}"
+                                def imageName = "raghuramummadi/e-commerce-frontend:${env.GIT_COMMIT}"
                                 
                                 bat "docker build -t \"${imageName}\" -f Dockerfile ."
-                                withCredentials([usernamePassword(credentialsId: '4bd3531a-cd7e-4df2-bbb6-18d9c051b60c', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                                withCredentials([usernamePassword(credentialsId: 'docker-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                                     bat "echo ${DOCKER_PASS} | docker login -u ${DOCKER_USER} --password-stdin"
                                     bat "docker push \"${imageName}\""
                                 }
@@ -77,10 +77,10 @@ pipeline {
                                 echo '--- Building and Pushing Backend Docker Image ---'
                                 env.GIT_COMMIT = bat(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
                                 // Use your Docker Hub username
-                                def imageName = "saiaryansoma/e-commerce-backend:${env.GIT_COMMIT}"
+                                def imageName = "raghuramummadi/e-commerce-backend:${env.GIT_COMMIT}"
 
                                 bat "docker build -t \"${imageName}\" -f Dockerfile ."
-                                withCredentials([usernamePassword(credentialsId: '4bd3531a-cd7e-4df2-bbb6-18d9c051b60c', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                                withCredentials([usernamePassword(credentialsId: 'docker-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                                     bat "echo ${DOCKER_PASS} | docker login -u ${DOCKER_USER} --password-stdin"
                                     bat "docker push \"${imageName}\""
                                 }
@@ -94,7 +94,7 @@ pipeline {
             agent any
             steps {
                 script {
-                    withEnv(['KUBECONFIG=C:\\Users\\aryan\\.kube\\config']) {
+                    withEnv(['KUBECONFIG=C:\Users\91630\.kube\config']) {
                         echo '--- Deploying Application to Minikube ---'
                         
                         // Apply the Kubernetes manifests
@@ -103,8 +103,8 @@ pipeline {
                         bat 'kubectl apply -f frontend-deployment.yaml'
 
                         // Update the image for the deployments to the one just built
-                        bat "kubectl set image deployment/backend-deployment backend=saiaryansoma/e-commerce-backend:${env.GIT_COMMIT}"
-                        bat "kubectl set image deployment/frontend-deployment frontend=saiaryansoma/e-commerce-frontend:${env.GIT_COMMIT}"
+                        bat "kubectl set image deployment/backend-deployment backend=raghuramummadi/e-commerce-backend:${env.GIT_COMMIT}"
+                        bat "kubectl set image deployment/frontend-deployment frontend=raghuramummadi/e-commerce-frontend:${env.GIT_COMMIT}"
                     }
                 }
             }
